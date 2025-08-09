@@ -25,6 +25,17 @@
     margin: 5px;
     user-select: none;
   }
+  .btn.active {
+    background: #22c55e; /* Verde cuando está activo */
+  }
+  .color-btn {
+    padding: 10px 15px;
+    border: none;
+    border-radius: 8px;
+    margin: 5px;
+    cursor: pointer;
+    font-weight: bold;
+  }
   table {
     width: 100%;
     margin-top: 20px;
@@ -39,13 +50,36 @@
     font-weight: bold;
     margin-top: 10px;
   }
+  #debug {
+    margin-top: 15px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    background: #fff;
+    font-family: monospace;
+    white-space: pre-wrap;
+  }
 </style>
 </head>
 <body>
-<h1>📊 Control de Gastos por Voz</h1>
+<h1>📊 Control de Gastos</h1>
 
 <div>
-  <button class="btn" id="voiceBtn">🎙️ Mantén para hablar</button>
+  <button class="btn" id="voiceBtn">🎙️ Activar micrófono</button>
+</div>
+
+<!-- Depurador de voz -->
+<div id="debug">
+🎤 Texto detectado: <span id="textoCapturado">[Aún no hay datos]</span>
+</div>
+
+<!-- Botones de colores -->
+<div>
+  <button class="color-btn" style="background:#ffd1dc" onclick="cambiarFondo('#ffd1dc')">Rosa</button>
+  <button class="color-btn" style="background:#aee6f9" onclick="cambiarFondo('#aee6f9')">Azul</button>
+  <button class="color-btn" style="background:#b8f2b8" onclick="cambiarFondo('#b8f2b8')">Verde</button>
+  <button class="color-btn" style="background:#fff5ba" onclick="cambiarFondo('#fff5ba')">Amarillo</button>
+  <button class="color-btn" style="background:#e5ccff" onclick="cambiarFondo('#e5ccff')">Lila</button>
+  <button class="color-btn" style="background:#ffdab9" onclick="cambiarFondo('#ffdab9')">Durazno</button>
 </div>
 
 <table>
@@ -64,14 +98,7 @@
 <script>
 let recognition;
 let gastos = JSON.parse(localStorage.getItem('gastos')) || [];
-const coloresPastel = {
-  rosa: "#ffd1dc",
-  azul: "#aee6f9",
-  verde: "#b8f2b8",
-  amarillo: "#fff5ba",
-  lila: "#e5ccff",
-  durazno: "#ffdab9"
-};
+let microfonoActivo = false;
 
 function renderGastos() {
   const tbody = document.getElementById('gastosBody');
@@ -81,7 +108,7 @@ function renderGastos() {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${g.fecha}</td><td>${g.categoria}</td><td>${g.monto}</td><td>${g.notas}</td>`;
     tbody.appendChild(tr);
-    total += parseFloat(g.monto);
+    total += parseFloat(g.monto) || 0;
   });
   document.getElementById('total').textContent = total.toLocaleString();
   localStorage.setItem('gastos', JSON.stringify(gastos));
@@ -98,6 +125,11 @@ function iniciarVoz() {
 
   recognition.onresult = (event) => {
     const texto = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
+
+    // Mostrar en pantalla lo que se capta
+    document.getElementById("textoCapturado").textContent = texto;
+    console.log("Texto detectado:", texto);
+
     procesarEntradaVoz(texto);
   };
 
@@ -109,29 +141,53 @@ function detenerVoz() {
 }
 
 function procesarEntradaVoz(texto) {
-  // Cambiar fondo si menciona un color pastel
-  for (let color in coloresPastel) {
-    if (texto.includes(color)) {
-      document.body.style.background = coloresPastel[color];
-      return;
-    }
+  let fecha = new Date().toLocaleDateString();
+  let categoria = "Sin categoría";
+  let monto = null;
+  let notas = "";
+
+  // Buscar monto
+  const montoMatch = texto.match(/(\d+([.,]\d+)?)/);
+  if (montoMatch) monto = parseFloat(montoMatch[0].replace(",", "."));
+
+  // Buscar fecha tipo "10 de agosto"
+  const fechaMatch = texto.match(/(\d{1,2}\s+de\s+\w+)/);
+  if (fechaMatch) fecha = fechaMatch[0];
+
+  // Buscar categoría después de "en"
+  const categoriaMatch = texto.match(/en\s+([a-záéíóú]+)/);
+  if (categoriaMatch) categoria = categoriaMatch[1];
+
+  // Notas después de "por"
+  const notasMatch = texto.match(/por\s+(.+)/);
+  if (notasMatch) notas = notasMatch[1];
+
+  if (monto !== null && !isNaN(monto)) {
+    gastos.push({ fecha, categoria, monto, notas });
+    renderGastos();
+  } else {
+    console.warn("No se detectó monto, no se agregó registro.");
   }
-
-  // Registrar gasto: "20000 transporte bus"
-  const partes = texto.split(' ');
-  const monto = parseFloat(partes[0].replace(/\D/g, ''));
-  if (isNaN(monto)) return;
-  const categoria = partes[1] || 'Sin categoría';
-  const notas = partes.slice(2).join(' ');
-  const fecha = new Date().toLocaleDateString();
-
-  gastos.push({ fecha, categoria, monto, notas });
-  renderGastos();
 }
 
-document.getElementById('voiceBtn').addEventListener('mousedown', iniciarVoz);
-document.getElementById('voiceBtn').addEventListener('mouseup', detenerVoz);
-document.getElementById('voiceBtn').addEventListener('mouseleave', detenerVoz);
+function cambiarFondo(color) {
+  document.body.style.background = color;
+}
+
+// Botón tipo interruptor
+document.getElementById('voiceBtn').addEventListener('click', () => {
+  if (!microfonoActivo) {
+    iniciarVoz();
+    document.getElementById('voiceBtn').textContent = "🛑 Desactivar micrófono";
+    document.getElementById('voiceBtn').classList.add("active");
+    microfonoActivo = true;
+  } else {
+    detenerVoz();
+    document.getElementById('voiceBtn').textContent = "🎙️ Activar micrófono";
+    document.getElementById('voiceBtn').classList.remove("active");
+    microfonoActivo = false;
+  }
+});
 
 renderGastos();
 </script>
